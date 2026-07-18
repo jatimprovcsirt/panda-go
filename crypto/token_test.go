@@ -25,6 +25,16 @@ func TestTokenValidator(t *testing.T) {
 		}
 	})
 
+	t.Run("LiveToken64Chars", func(t *testing.T) {
+		liveToken64 := "panda_live_76d08573d453cdbdb4bf5704d13f8f54d57cd3c47c9b4be276d08573d453cdbd"
+		if IsDemoToken(liveToken64) {
+			t.Errorf("Expected IsDemoToken(%q) to be false", liveToken64)
+		}
+		if err := ValidateToken(liveToken64); err != nil {
+			t.Errorf("Expected 64-char liveToken to be valid, got: %v", err)
+		}
+	})
+
 	t.Run("EmptyToken", func(t *testing.T) {
 		err := ValidateToken("")
 		if err == nil {

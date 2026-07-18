@@ -7,8 +7,8 @@ import (
 )
 
 // TOKEN_PATTERN is the regex pattern for a valid PANDA access token.
-// Format: panda_(demo|live)_<48 hex characters>
-const TOKEN_PATTERN = `^panda_(demo|live)_[a-f0-9]{48}$`
+// Format: panda_(demo|live)_<48 or 64 hex characters>
+const TOKEN_PATTERN = `^panda_(demo|live)_([a-f0-9]{48}|[a-f0-9]{64})$`
 
 // DEMO_TOKEN is the static demo token shipped in .env.example and documentation.
 const DEMO_TOKEN = "panda_demo_76d08573d453cdbdb4bf5704d13f8f54d57cd3c47c9b4be2"
@@ -33,7 +33,7 @@ func ValidateToken(token string) error {
 			gotText = gotText[:20] + "..."
 		}
 		return fmt.Errorf("%w: The provided token does not match the expected format.\n"+
-			"Expected: panda_(demo|live)_<48 hex characters>\n"+
+			"Expected: panda_(demo|live)_<48 or 64 hex characters>\n"+
 			"Got: %s", ErrInvalidToken, gotText)
 	}
 

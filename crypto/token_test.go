@@ -2,10 +2,14 @@ package crypto
 
 import (
 	"errors"
+	"os"
 	"testing"
 )
 
 func TestTokenValidator(t *testing.T) {
+	// Set test mode to skip online validation during unit tests
+	os.Setenv("PANDA_SKIP_ONLINE_VALIDATION", "1")
+	defer os.Unsetenv("PANDA_SKIP_ONLINE_VALIDATION")
 	t.Run("DemoToken", func(t *testing.T) {
 		if !IsDemoToken(DEMO_TOKEN) {
 			t.Errorf("Expected IsDemoToken(%q) to be true", DEMO_TOKEN)

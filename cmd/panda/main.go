@@ -53,7 +53,11 @@ func main() {
 				fmt.Println("Please register your application at the PANDA portal to obtain a per-application live token.")
 			}
 
-			fmt.Println("✓ token gate passed (format check, pre-portal — Section 14.2)")
+			if crypto.IsDemoToken(tkn) {
+				fmt.Println("✓ token gate passed (demo token, format check only)")
+			} else {
+				fmt.Println("✓ token gate passed (validated against PANDA portal)")
+			}
 
 			reg := regexp.MustCompile(`[^A-Za-z0-9]`)
 			normalizedKid := strings.ToUpper(reg.ReplaceAllString(kid, "_"))

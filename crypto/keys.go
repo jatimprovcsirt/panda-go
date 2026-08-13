@@ -66,38 +66,216 @@ func (p *LocalKeyProvider) GetKey(kid string) ([]byte, error) {
 	return decoded, nil
 }
 
-type VaultKeyProvider struct {
-	vaultURL   string
-	vaultToken string
-	mountPath  string
-	cache      map[string][]byte
-	mu         sync.RWMutex
+// VaultKeyProviderConfig holds configuration for VaultKeyProvider
+type VaultKeyProviderConfig struct {
+	VaultURL    string
+	VaultToken  string
+	MountPath   string
+	Namespace   string
+
+	// AppRole authentication
+	RoleID    string
+	SecretID  string
+	AuthToken string // 'token' or 'approle'
+	TokenTTL  int   // Token TTL in seconds
+	CacheTTL  int   // Key cache TTL in seconds
 }
 
+// VaultKeyProvider fetches encryption keys from HashiCorp Vault KV v2
+//
+// Supports two authentication methods:
+// 1. Token-based authentication (vaultToken)
+// 2. AppRole authentication (roleId + secretId with automatic token renewal)
+//
+// Keys are cached in memory with a configurable TTL to reduce API calls.
+type VaultKeyProvider struct {
+	config     VaultKeyProviderConfig
+	cache      map[string]cachedKey
+	cacheMu    sync.RWMutex
+	tokenMu    sync.Mutex
+
+	// Token-based auth
+	vaultToken string
+
+	// AppRole-based auth
+	roleId      string
+	secretId    string
+	currentToken string
+	tokenExpires  time.Time
+}
+
+// NewVaultKeyProvider creates a VaultKeyProvider with token authentication
+// Deprecated: Use NewVaultKeyProviderWithConfig for AppRole support
 func NewVaultKeyProvider(vaultURL, vaultToken, mountPath string) *VaultKeyProvider {
-	return &VaultKeyProvider{
-		vaultURL:   strings.TrimRight(vaultURL, "/"),
-		vaultToken: vaultToken,
-		mountPath:  strings.Trim(mountPath, "/"),
-		cache:      make(map[string][]byte),
+	config := VaultKeyProviderConfig{
+		VaultURL:   vaultURL,
+		VaultToken:  vaultToken,
+		MountPath:   mountPath,
+		Namespace:   "",
+		RoleID:      "",
+		SecretID:    "",
+		AuthToken:    "token",
+		TokenTTL:    3600,
+		CacheTTL:     300,
 	}
+	return NewVaultKeyProviderWithConfig(config)
+}
+
+// NewVaultKeyProviderWithConfig creates a VaultKeyProvider with full configuration
+func NewVaultKeyProviderWithConfig(config VaultKeyProviderConfig) *VaultKeyProvider {
+	// Normalize URLs and paths
+	config.VaultURL = strings.TrimRight(config.VaultURL, "/")
+	config.MountPath = strings.Trim(config.MountPath, "/")
+	if config.MountPath == "" {
+		config.MountPath = "secret"
+	}
+
+	// Determine auth method
+	if config.RoleID != "" && config.SecretID != "" {
+		config.AuthToken = "approle"
+	} else {
+		config.AuthToken = "token"
+	}
+
+	// Set defaults
+	if config.TokenTTL == 0 {
+		config.TokenTTL = 3600
+	}
+	if config.CacheTTL == 0 {
+		config.CacheTTL = 300
+	}
+
+	return &VaultKeyProvider{
+		config:     config,
+		cache:      make(map[string]cachedKey),
+		vaultToken: config.VaultToken,
+		roleId:     config.RoleID,
+		secretId:   config.SecretID,
+	}
+}
+
+// ensureToken ensures we have a valid Vault token
+func (p *VaultKeyProvider) ensureToken() (string, error) {
+	if p.config.AuthToken == "token" {
+		return p.vaultToken, nil
+	}
+
+	p.tokenMu.Lock()
+	defer p.tokenMu.Unlock()
+
+	// Check if we have a valid cached token
+	if p.currentToken != "" && time.Now().Before(p.tokenExpires) {
+		return p.currentToken, nil
+	}
+
+	// Fetch new AppRole token
+	return p.fetchAppRoleToken()
+}
+
+// fetchAppRoleToken fetches a new Vault token using AppRole authentication
+func (p *VaultKeyProvider) fetchAppRoleToken() (string, error) {
+	url := fmt.Sprintf("%s/v1/auth/approle/login", p.config.VaultURL)
+	payload := map[string]string{
+		"role_id":   p.roleId,
+		"secret_id": p.secretId,
+	}
+
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return "", fmt.Errorf("%w: failed to marshal AppRole payload: %v", ErrKeyNotFound, err)
+	}
+
+	req, err := http.NewRequest("POST", url, bytes.NewReader(body))
+	if err != nil {
+		return "", fmt.Errorf("%w: failed to create AppRole request: %v", ErrKeyNotFound, err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+
+	tr := &http.Transport{}
+	if os.Getenv("PANDA_VAULT_INSECURE") == "1" {
+		tr.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
+	}
+
+	client := &http.Client{
+		Timeout:   10 * time.Second,
+		Transport: tr,
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("%w: AppRole request failed: %v", ErrKeyNotFound, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		respBody, _ := io.ReadAll(resp.Body)
+		return "", fmt.Errorf("%w: AppRole authentication failed (HTTP %d): %s", ErrKeyNotFound, resp.StatusCode, string(respBody))
+	}
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("%w: failed to read AppRole response: %v", ErrKeyNotFound, err)
+	}
+
+	var authResp struct {
+		Auth struct {
+			ClientToken    string  `json:"client_token"`
+			LeaseDuration  float64 `json:"lease_duration"`
+		} `json:"auth"`
+	}
+
+	if err := json.Unmarshal(respBody, &authResp); err != nil {
+		return "", fmt.Errorf("%w: failed to parse AppRole response: %v", ErrKeyNotFound, err)
+	}
+
+	if authResp.Auth.ClientToken == "" {
+		return "", fmt.Errorf("%w: no client_token in AppRole response", ErrKeyNotFound)
+	}
+
+	p.currentToken = authResp.Auth.ClientToken
+
+	// Set token expiry (use lease duration if provided, otherwise default to token TTL)
+	leaseDuration := int(authResp.Auth.LeaseDuration)
+	if leaseDuration == 0 {
+		leaseDuration = p.config.TokenTTL
+	}
+	// Refresh 5 minutes (300 seconds) before expiry
+	p.tokenExpires = time.Now().Add(time.Duration(leaseDuration-300) * time.Second)
+
+	return p.currentToken, nil
 }
 
 func (p *VaultKeyProvider) GetKey(kid string) ([]byte, error) {
-	p.mu.RLock()
+	// Check cache first (with TTL)
+	p.cacheMu.RLock()
 	cached, ok := p.cache[kid]
-	p.mu.RUnlock()
-	if ok {
-		return cached, nil
+	p.cacheMu.RUnlock()
+	if ok && cached.expires.After(time.Now()) {
+		return cached.key, nil
 	}
 
-	url := fmt.Sprintf("%s/v1/%s/data/%s", p.vaultURL, p.mountPath, kid)
+	// Ensure we have a valid token
+	token, err := p.ensureToken()
+	if err != nil {
+		return nil, err
+	}
+
+	// Build the Vault API URL for KV v2
+	var url string
+	if p.config.Namespace != "" {
+		url = fmt.Sprintf("%s/v1/%s/%s/data/%s", p.config.VaultURL, p.config.Namespace, p.config.MountPath, kid)
+	} else {
+		url = fmt.Sprintf("%s/v1/%s/data/%s", p.config.VaultURL, p.config.MountPath, kid)
+	}
+
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return nil, fmt.Errorf("%w: failed to create request: %v", ErrKeyNotFound, err)
 	}
 
-	req.Header.Set("X-Vault-Token", p.vaultToken)
+	req.Header.Set("X-Vault-Token", token)
 	req.Header.Set("Accept", "application/json")
 
 	tr := &http.Transport{}
@@ -116,11 +294,16 @@ func (p *VaultKeyProvider) GetKey(kid string) ([]byte, error) {
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("%w: Vault returned status code %d", ErrKeyNotFound, resp.StatusCode)
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, fmt.Errorf("%w: key '%s' not found in Vault", ErrKeyNotFound, kid)
 	}
 
-	body, err := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("%w: Vault returned status code %d: %s", ErrKeyNotFound, resp.StatusCode, string(body))
+	}
+
+	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("%w: failed to read response: %v", ErrKeyNotFound, err)
 	}
@@ -131,7 +314,7 @@ func (p *VaultKeyProvider) GetKey(kid string) ([]byte, error) {
 		} `json:"data"`
 	}
 
-	if err := json.Unmarshal(body, &data); err != nil {
+	if err := json.Unmarshal(respBody, &data); err != nil {
 		return nil, fmt.Errorf("%w: failed to parse Vault response: %v", ErrKeyNotFound, err)
 	}
 
@@ -149,9 +332,13 @@ func (p *VaultKeyProvider) GetKey(kid string) ([]byte, error) {
 		return nil, fmt.Errorf("%w: Vault key is not a valid 32-byte base64 string", ErrKeyNotFound)
 	}
 
-	p.mu.Lock()
-	p.cache[kid] = decoded
-	p.mu.Unlock()
+	// Cache the key with TTL
+	p.cacheMu.Lock()
+	p.cache[kid] = cachedKey{
+		key:     decoded,
+		expires: time.Now().Add(time.Duration(p.config.CacheTTL) * time.Second),
+	}
+	p.cacheMu.Unlock()
 
 	return decoded, nil
 }

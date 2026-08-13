@@ -129,6 +129,80 @@ panda shred opd-dukcapil-key-old
 
 ---
 
+## Infisical Setup (Production-Ready Alternative)
+
+Untuk deployment produksi, disarankan menggunakan Infisical sebagai KeyProvider alih-alih LocalKeyProvider (env vars).
+
+### Setup Infisical Cloud
+
+1. **Buat Akun Infisical**
+   - Daftar di https://infisical.com (free tier tersedia)
+   - Buat project baru
+   - Buat environment (dev, staging, prod)
+
+2. **Buat Machine Identity**
+   - Buka "Machine Identities" di project Anda
+   - Klik "Create Machine Identity"
+   - Pilih environment yang diakses
+   - Copy Client ID dan Client Secret
+
+3. **Upload Kunci Enkripsi**
+   - Buka "Secrets" di project
+   - Pilih environment
+   - Klik "Add Secret"
+   - Secret Key: `nik-key` (atau KID Anda)
+   - Secret Value: `<base64-encoded-32-byte-key>` (generate dengan `openssl rand -base64 32`)
+
+4. **Konfigurasi Aplikasi**
+   ```bash
+   # .env
+   PANDA_KEY_PROVIDER_DRIVER=infisical
+   PANDA_INFISICAL_SITE_URL=https://app.infisical.com
+   PANDA_INFISICAL_CLIENT_ID=<client-id>
+   PANDA_INFISICAL_CLIENT_SECRET=<client-secret>
+   PANDA_INFISICAL_PROJECT_ID=<project-id>
+   PANDA_INFISICAL_ENVIRONMENT=dev
+   PANDA_INFISICAL_CACHE_TTL=300
+   ```
+
+### Menggunakan InfisicalKeyProvider dalam Kode
+
+```go
+package main
+
+import (
+    "github.com/jatimprovcsirt/panda-go/crypto"
+)
+
+func main() {
+    // Baca dari environment variables atau config
+    keyProvider := crypto.NewInfisicalKeyProvider(
+        "https://app.infisical.com",
+        "your-client-id",
+        "your-client-secret",
+        "your-project-id",
+        "dev",
+        300, // cache TTL in seconds
+    )
+
+    cipher := crypto.NewFieldCipher(keyProvider, nil, nil)
+
+    // Sisa kode tetap sama
+    envelope, err := cipher.Encrypt([]byte("3201012501990001"), "nik-key")
+    // ...
+}
+```
+
+**Keuntungan Infisical:**
+- ✅ Production-ready dengan auto-renewal (tanpa token expiration)
+- ✅ UI modern yang mudah digunakan
+- ✅ Free tier untuk project kecil
+- ✅ Cloud atau self-hosted options
+
+Untuk setup lengkap Infisical, lihat [Infisical Setup Guide](../../docs/infisical-setup-guide.md).
+
+---
+
 ## 2. Quick Start
 
 ### Langkah 1: Siapkan KeyProvider dan FieldCipher

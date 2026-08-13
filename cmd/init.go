@@ -271,9 +271,55 @@ func setupVault(reader *bufio.Reader, token string) *panda.PandaCredentials {
 		vaultURL = "http://127.0.0.1:8200"
 	}
 
-	fmt.Print("Vault Token: ")
-	tokenInput, _ := reader.ReadString('\n')
-	vaultToken := strings.TrimSpace(tokenInput)
+	// Authentication method selection
+	fmt.Println("\nSelect Vault authentication method:")
+	fmt.Println("  1. AppRole (Recommended - Auto-renewal, production-ready)")
+	fmt.Println("  2. Token (Advanced - Manual renewal)")
+	fmt.Print("Choose method [default: 1]: ")
+	authInput, _ := reader.ReadString('\n')
+	authChoice := strings.TrimSpace(authInput)
+	if authChoice == "" {
+		authChoice = "1"
+	}
+
+	var vaultAuthMethod string
+	var vaultToken string
+	var vaultRoleId string
+	var vaultSecretId string
+
+	if authChoice == "1" {
+		// AppRole authentication
+		vaultAuthMethod = "approle"
+		fmt.Println("\nUsing AppRole authentication (auto-renewal enabled)")
+
+		fmt.Print("Role ID: ")
+		roleIdInput, _ := reader.ReadString('\n')
+		vaultRoleId = strings.TrimSpace(roleIdInput)
+
+		fmt.Print("Secret ID: ")
+		secretIdInput, _ := reader.ReadString('\n')
+		vaultSecretId = strings.TrimSpace(secretIdInput)
+
+		// Optional: Token TTL
+		fmt.Println("\nToken TTL (Optional)")
+		fmt.Println("  Token lifetime before auto-renewal. Default: 3600s (1 hour)")
+		fmt.Println("  Press Enter to use default, or enter custom value (300-86400 seconds)")
+		fmt.Print("Token TTL in seconds [default: 3600]: ")
+		ttlInput, _ := reader.ReadString('\n')
+		vaultTokenTTL := strings.TrimSpace(ttlInput)
+		if vaultTokenTTL == "" {
+			vaultTokenTTL = "3600"
+		}
+	} else {
+		// Token authentication
+		vaultAuthMethod = "token"
+		fmt.Println("\nUsing Token authentication (manual renewal required)")
+
+		fmt.Print("Vault Token: ")
+		tokenInput, _ := reader.ReadString('\n')
+		vaultToken = strings.TrimSpace(tokenInput)
+		vaultTokenTTL = "3600" // Default for token auth
+	}
 
 	fmt.Print("Mount path [default: secret]: ")
 	mountInput, _ := reader.ReadString('\n')
@@ -283,11 +329,15 @@ func setupVault(reader *bufio.Reader, token string) *panda.PandaCredentials {
 	}
 
 	return &panda.PandaCredentials{
-		Token:     token,
-		Provider:  "vault",
-		VaultURL:  vaultURL,
-		VaultToken: vaultToken,
-		VaultMount: vaultMount,
+		Token:          token,
+		Provider:       "vault",
+		VaultURL:       vaultURL,
+		VaultAuthMethod: vaultAuthMethod,
+		VaultToken:     vaultToken,
+		VaultRoleId:    vaultRoleId,
+		VaultSecretId:  vaultSecretId,
+		VaultTokenTTL:  vaultTokenTTL,
+		VaultMount:     vaultMount,
 	}
 }
 

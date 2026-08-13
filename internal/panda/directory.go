@@ -39,9 +39,13 @@ type PandaCredentials struct {
 	// Keys metadata
 	Keys map[string]KeyInfo `json:"keys,omitempty"`
 	// Vault options
-	VaultURL      string `json:"vaultUrl,omitempty"`
-	VaultToken    string `json:"vaultToken,omitempty"`
-	VaultMount    string `json:"vaultMount,omitempty"`
+	VaultURL        string `json:"vaultUrl,omitempty"`
+	VaultToken      string `json:"vaultToken,omitempty"`
+	VaultAuthMethod string `json:"vaultAuthMethod,omitempty"`
+	VaultRoleId     string `json:"vaultRoleId,omitempty"`
+	VaultSecretId   string `json:"vaultSecretId,omitempty"`
+	VaultTokenTTL   string `json:"vaultTokenTTL,omitempty"`
+	VaultMount      string `json:"vaultMount,omitempty"`
 	// Infisical options
 	InfisicalSiteUrl      string `json:"infisicalSiteUrl,omitempty"`
 	InfisicalClientId     string `json:"infisicalClientId,omitempty"`

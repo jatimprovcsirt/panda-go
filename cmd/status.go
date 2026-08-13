@@ -82,12 +82,29 @@ func runStatus(cmd *cobra.Command, args []string) error {
 	case "vault":
 		fmt.Println("  Type: HashiCorp Vault")
 		fmt.Printf("  URL: %s\n", creds.VaultURL)
-		fmt.Printf("  Mount: %s\n", creds.VaultMount)
-		if creds.VaultToken != "" {
-			fmt.Println("  Token: ***configured***")
+		fmt.Printf("  Auth: %s\n", creds.VaultAuthMethod)
+		if creds.VaultAuthMethod == "approle" {
+			if creds.VaultRoleId != "" {
+				fmt.Println("  Role ID: ***configured***")
+			} else {
+				fmt.Println("  Role ID: not set")
+			}
+			if creds.VaultSecretId != "" {
+				fmt.Println("  Secret ID: ***configured***")
+			} else {
+				fmt.Println("  Secret ID: not set")
+			}
 		} else {
-			fmt.Println("  Token: not set")
+			if creds.VaultToken != "" {
+				fmt.Println("  Token: ***configured***")
+			} else {
+				fmt.Println("  Token: not set")
+			}
 		}
+		if creds.VaultTokenTTL != "" {
+			fmt.Printf("  Token TTL: %s seconds\n", creds.VaultTokenTTL)
+		}
+		fmt.Printf("  Mount: %s\n", creds.VaultMount)
 
 	case "infisical":
 		fmt.Println("  Type: Infisical")

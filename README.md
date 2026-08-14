@@ -40,11 +40,17 @@ Anda harus memiliki PANDA Access Token untuk menginisialisasi kunci master aplik
 
 ### Langkah 2: Jalankan Perintah Init
 
-Jalankan perintah berikut di direktori root proyek Anda. Ganti `opd-dukcapil-key-1` dengan key identifier (KID) Anda dan `YOUR_TOKEN` dengan PANDA Access Token yang diperoleh dari portal (panjang: 48 atau 64 karakter hex):
+Jalankan perintah berikut di direktori root proyek Anda. Ganti `YOUR_TOKEN` dengan PANDA Access Token yang diperoleh dari portal (panjang: 48 atau 64 karakter hex):
 
 ```bash
-panda init --kid opd-dukcapil-key-1 --token YOUR_TOKEN
+panda init --token YOUR_TOKEN
 ```
+
+Setelah menjalankan perintah ini, wizard akan:
+1. Memvalidasi token Anda
+2. Meminta Anda memasukkan Key Identifier (KID) untuk kunci pertama
+3. Menghasilkan kunci 256-bit yang aman secara kriptografis secara **lokal**
+4. Menambahkan kunci dalam format base64 ke file `.env` Anda (misal: `PANDA_KEY_OPD_DUKCAPIL_KEY_1=...`)
 
 > [!NOTE]
 > Untuk pengembangan lokal, Anda dapat menggunakan demo token bawaan:
@@ -95,21 +101,18 @@ $env:PANDA_KEY_OPD_DUKCAPIL_KEY_1="<nilai dari .env>"
 
 ### Menambahkan KID/Kunci Tambahan
 
-Jika aplikasi Anda membutuhkan lebih dari satu kunci (misalnya untuk field data yang berbeda atau rotasi bertahap), jalankan perintah `init` kembali dengan KID baru dan token yang sama:
+Jika aplikasi Anda membutuhkan lebih dari satu kunci (misalnya untuk field data yang berbeda atau rotasi bertahap), gunakan perintah `generate` untuk menambahkan kunci tambahan tanpa memerlukan token:
 
 ```bash
-# Kunci pertama: untuk field NIK
-panda init --kid opd-dukcapil-key-1 --token YOUR_TOKEN
-
 # Kunci kedua: untuk field nomor HP
-panda init --kid opd-dukcapil-key-2 --token YOUR_TOKEN
+panda generate opd-dukcapil-key-2
 
 # Kunci untuk blind index (suffix -idx wajib dipisah)
-panda init --kid opd-dukcapil-key-1-idx --token YOUR_TOKEN
+panda generate opd-dukcapil-key-1-idx
 ```
 
 > [!NOTE]
-> Satu token dapat digunakan untuk menginisialisasi beberapa KID/kunci dalam aplikasi yang sama. Token digunakan kembali setiap kali Anda perlu menghasilkan kunci baru.
+> Perintah `generate` hanya dapat digunakan setelah inisialisasi awal dengan `init`. Tidak perlu token lagi untuk menambahkan kunci baru.
 
 ### Rotasi Kunci (Tanpa Portal)
 
@@ -372,7 +375,11 @@ func main() {
 
 | Perintah | Memerlukan Token | Deskripsi |
 |---|---|---|
-| `panda init --kid <kid> --token <token>` | ✅ Ya | Generate kunci master baru untuk KID tertentu |
+| `panda init --token <token>` | ✅ Ya | Inisialisasi PANDA dengan wizard interaktif untuk KID pertama |
+| `panda generate <kid>` | ❌ Tidak | Generate kunci tambahan untuk KID baru (tanpa wizard) |
+| `panda status` | ❌ Tidak | Tampilkan status konfigurasi PANDA saat ini |
+| `panda config` | ❌ Tidak | Tampilkan detail konfigurasi lengkap |
+| `panda deinit` | ❌ Tidak | Hapus konfigurasi PANDA dari proyek |
 | `panda rotate-key --new-kid <kid>` | ❌ Tidak | Buat kunci baru secara lokal, set sebagai default aktif |
 | `panda shred <kid>` | ❌ Tidak | Hapus kunci secara permanen (irreversible!) |
 | `panda migrate <table> <col> <kid>` | ❌ Tidak | Migrasi plaintext → encrypted envelope di database |

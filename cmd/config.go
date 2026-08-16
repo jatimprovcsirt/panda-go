@@ -22,8 +22,8 @@ func init() {
 }
 
 func runConfig(cmd *cobra.Command, args []string) error {
-	fmt.Println("\n🐼 PANDA Configuration")
-	fmt.Println("======================\n")
+	fmt.Println("🐼 PANDA Configuration")
+	fmt.Println("======================")
 
 	// Read credentials
 	creds, err := panda.ReadCredentials()

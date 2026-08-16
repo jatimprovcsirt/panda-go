@@ -78,8 +78,8 @@ func runGenerate(cmd *cobra.Command, args []string) error {
 }
 
 func runGenerateInteractive() error {
-	fmt.Println("\n🔑 PANDA Key Generation")
-	fmt.Println("=======================\n")
+	fmt.Println("🔑 PANDA Key Generation")
+	fmt.Println("=======================")
 
 	reader := bufio.NewReader(os.Stdin)
 

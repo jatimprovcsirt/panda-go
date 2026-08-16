@@ -27,8 +27,8 @@ func init() {
 }
 
 func runDeinit(cmd *cobra.Command, args []string) error {
-	fmt.Println("\n🐼 PANDA Deinitialization")
-	fmt.Println("==========================\n")
+	fmt.Println("🐼 PANDA Deinitialization")
+	fmt.Println("==========================")
 
 	pandaPath := filepath.Join(panda.PandaDir)
 

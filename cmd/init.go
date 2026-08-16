@@ -58,8 +58,8 @@ func runInit(cmd *cobra.Command, args []string) error {
 }
 
 func runQuickInit() error {
-	fmt.Println("\n🐼 PANDA Quick Init")
-	fmt.Println("====================\n")
+	fmt.Println("🐼 PANDA Quick Init")
+	fmt.Println("====================")
 
 	token := initToken
 	if token == "" {
@@ -119,8 +119,8 @@ func runQuickInit() error {
 }
 
 func runWizard() error {
-	fmt.Println("\n🐼 PANDA Initialization Wizard")
-	fmt.Println("==============================\n")
+	fmt.Println("🐼 PANDA Initialization Wizard")
+	fmt.Println("==============================")
 
 	reader := bufio.NewReader(os.Stdin)
 
@@ -256,7 +256,7 @@ func runWizard() error {
 	fmt.Println("\nNext steps:")
 	fmt.Println("  - Use 'panda generate <kid>' to create encryption keys")
 	fmt.Println("  - Use 'panda status' to verify configuration")
-	fmt.Println("  - Use 'panda migrate' to encrypt existing data\n")
+	fmt.Println("  - Use 'panda migrate' to encrypt existing data")
 
 	return nil
 }
@@ -286,6 +286,7 @@ func setupVault(reader *bufio.Reader, token string) *panda.PandaCredentials {
 	var vaultToken string
 	var vaultRoleId string
 	var vaultSecretId string
+	var vaultTokenTTL string
 
 	if authChoice == "1" {
 		// AppRole authentication
@@ -306,7 +307,7 @@ func setupVault(reader *bufio.Reader, token string) *panda.PandaCredentials {
 		fmt.Println("  Press Enter to use default, or enter custom value (300-86400 seconds)")
 		fmt.Print("Token TTL in seconds [default: 3600]: ")
 		ttlInput, _ := reader.ReadString('\n')
-		vaultTokenTTL := strings.TrimSpace(ttlInput)
+		vaultTokenTTL = strings.TrimSpace(ttlInput)
 		if vaultTokenTTL == "" {
 			vaultTokenTTL = "3600"
 		}

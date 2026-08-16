@@ -373,17 +373,124 @@ func main() {
 
 ## 4. Referensi CLI
 
-| Perintah | Memerlukan Token | Deskripsi |
-|---|---|---|
-| `panda init --token <token>` | ✅ Ya | Inisialisasi PANDA dengan wizard interaktif untuk KID pertama |
-| `panda generate <kid>` | ❌ Tidak | Generate kunci tambahan untuk KID baru (tanpa wizard) |
-| `panda status` | ❌ Tidak | Tampilkan status konfigurasi PANDA saat ini |
-| `panda config` | ❌ Tidak | Tampilkan detail konfigurasi lengkap |
-| `panda deinit` | ❌ Tidak | Hapus konfigurasi PANDA dari proyek |
-| `panda rotate-key --new-kid <kid>` | ❌ Tidak | Buat kunci baru secara lokal, set sebagai default aktif |
-| `panda shred <kid>` | ❌ Tidak | Hapus kunci secara permanen (irreversible!) |
-| `panda migrate <table> <col> <kid>` | ❌ Tidak | Migrasi plaintext → encrypted envelope di database |
-| `panda migrate --dry-run <table> <col> <kid>` | ❌ Tidak | Estimasi scope migrasi tanpa mengubah data |
+### Mode Non-Interaktif (Flags untuk CI/CD)
+
+Semua perintah CLI dapat digunakan dalam mode non-interaktif dengan menggunakan flag. Ini sangat berguna untuk:
+
+- **CI/CD pipelines** - Otomatisasi tanpa interaksi pengguna
+- **Docker containers** - Inisialisasi otomatis saat container start
+- **Infrastructure as Code** - Integrasi dengan Terraform, Ansible, dll
+- **Automated testing** - Setup dan teardown otomatis
+
+#### Perintah Init - Mode Non-Interaktif
+
+```bash
+# Quick init dengan Local provider (mode tercepat)
+panda init --quick --token <token>
+
+# Init tanpa generate kunci pertama (untuk automation lanjutan)
+panda init --quick --token <token> --skip-key-gen
+
+# Reinitialize paksa (overwrite konfigurasi yang sudah ada)
+panda init --quick --token <token> --reinit
+```
+
+**Flag `init` yang tersedia:**
+
+| Flag | Default | Deskripsi |
+|------|---------|-----------|
+| `--token <value>` | - | PANDA access token (atau set `PANDA_ACCESS_TOKEN` env) |
+| `--quick` | `false` | Skip wizard, gunakan quick setup dengan local provider |
+| `--reinit` | `false` | Reinitialize meskipun sudah pernah di-init sebelumnya |
+| `--skip-key-gen` | `false` | Skip generate kunci pertama |
+
+#### Perintah Generate - Mode Non-Interaktif
+
+```bash
+# Generate kunci dengan KID langsung (non-interactive)
+panda generate my-new-key
+
+# Generate dengan description
+panda generate nik-key --description "Key for NIK encryption"
+
+# Generate dengan flag --kid
+panda generate --kid my-key
+```
+
+**Flag `generate` yang tersedia:**
+
+| Flag | Default | Deskripsi |
+|------|---------|-----------|
+| `--kid <value>` | - | Key Identifier |
+| `--description <text>` | - | Deskripsi untuk kunci |
+
+#### Perintah Shred - Mode Non-Interaktif
+
+```bash
+# Hapus kunci dengan konfirmasi otomatis (hati-hati!)
+panda shred old-deprecated-key --force
+```
+
+**Flag `shred` yang tersedia:**
+
+| Flag | Short | Default | Deskripsi |
+|------|-------|---------|-----------|
+| `--force` | `-f` | `false` | Skip konfirmasi prompt (irreversible!) |
+
+#### Perintah Migrate - Mode Non-Interaktif
+
+```bash
+# Migrasi batch processing dengan flags
+panda migrate citizens nik default-key \
+  --batch-size 500 \
+  --delay 200 \
+  --pk id \
+  --dry-run
+
+# Migrasi PostgreSQL dengan batch size custom
+panda migrate users email email-key --batch-size 1000
+
+# Migrasi dengan custom primary key
+panda migrate transactions transaction_id txn-key --pk uuid
+```
+
+**Flag `migrate` yang tersedia:**
+
+| Flag | Short | Default | Deskripsi |
+|------|-------|---------|-----------|
+| `--batch-size <n>` | `-b` | `100` | Jumlah baris per chunk |
+| `--delay <ms>` | `-d` | `100` | Delay antar chunk (ms) |
+| `--pk <col>` | `-p` | `id` | Nama kolom primary key |
+| `--dry-run` | - | `false` | Estimasi scope tanpa mengubah data |
+
+#### Perintah Rotate-Key - Mode Non-Interaktif
+
+```bash
+# Rotasi kunci ke KID baru
+panda rotate-key --new-kid new-key-2024
+
+# Rotasi kunci dengan KID custom
+panda rotate-key --new-kid production-key-v2
+```
+
+**Flag `rotate-key` yang tersedia:**
+
+| Flag | Short | Default | Deskripsi |
+|------|-------|---------|-----------|
+| `--new-kid <value>` | `-n` | - | **Wajib** - Key Identifier baru untuk rotasi |
+
+#### Tabel Lengkap Referensi CLI
+
+| Perintah | Memerlukan Token | Mode Non-Interaktif | Deskripsi |
+|---|---|---:|---|
+| `panda init --token <token>` | ✅ Ya | ✅ `--quick` | Inisialisasi PANDA (wizard atau quick mode) |
+| `panda generate <kid>` | ❌ Tidak | ✅ (default non-interactive) | Generate kunci tambahan |
+| `panda status` | ❌ Tidak | ✅ (default non-interactive) | Tampilkan status konfigurasi |
+| `panda config` | ❌ Tidak | ✅ (default non-interactive) | Tampilkan detail konfigurasi lengkap |
+| `panda deinit` | ❌ Tidak | ✅ (default non-interactive) | Hapus konfigurasi PANDA |
+| `panda rotate-key --new-kid <kid>` | ❌ Tidak | ✅ (default non-interactive) | Rotasi kunci ke KID baru |
+| `panda shred <kid>` | ❌ Tidak | ✅ `--force` | Hapus kunci permanen |
+| `panda migrate <table> <col> <kid>` | ❌ Tidak | ✅ (default non-interactive) | Migrasi plaintext → encrypted |
 
 ---
 

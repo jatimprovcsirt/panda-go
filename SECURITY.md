@@ -7,7 +7,7 @@ PANDA is a cryptographic SDK handling personal data under Indonesia's UU PDP (La
 ### How to report
 
 1. **DO NOT** open a public GitHub issue for security vulnerabilities.
-2. Email: **security@jatimprov.go.id** (or use GitHub's private vulnerability reporting if enabled on this repository).
+2. Email: **csirt@jatimprov.go.id** (or use GitHub's private vulnerability reporting if enabled on this repository).
 3. Include:
    - Description of the vulnerability
    - Steps to reproduce

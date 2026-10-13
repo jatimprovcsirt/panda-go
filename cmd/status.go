@@ -24,8 +24,8 @@ func init() {
 }
 
 func runStatus(cmd *cobra.Command, args []string) error {
-	fmt.Println("\n🐼 PANDA Status")
-	fmt.Println("==============\n")
+	fmt.Println("🐼 PANDA Status")
+	fmt.Println("==============")
 
 	// Check if .panda exists
 	if !panda.PandaDirExists() {

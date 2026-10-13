@@ -64,16 +64,18 @@ func TestTokenPatternValidation(t *testing.T) {
 		"",
 	}
 
-	tokenPattern := regexp.MustCompile(`^panda_(demo|live)_([a-f0-9]{48}|[a-f0-9]{64})$`)
-
+	// This asserts the function the wizard actually calls, not a regexp
+	// compiled here. It compiled its own before, so it proved nothing about
+	// init: the wizard's pattern had drifted to 48-only and this test, holding
+	// its own correct copy, went on passing.
 	for _, token := range validTokens {
-		if !tokenPattern.MatchString(token) {
+		if !crypto.ValidateTokenFormat(token) {
 			t.Errorf("Token should match pattern: %v", token)
 		}
 	}
 
 	for _, token := range invalidTokens {
-		if tokenPattern.MatchString(token) {
+		if crypto.ValidateTokenFormat(token) {
 			t.Errorf("Token should not match pattern: %v", token)
 		}
 	}

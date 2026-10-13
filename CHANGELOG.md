@@ -46,3 +46,24 @@ here.
 `panda-docker` vendors this module. A tag pushed here reaches that service on
 its next dependency update, so a tag is not purely a statement about this
 repository.
+
+## Unreleased — the wizard had its own copy of the pattern
+
+No new tag yet. The next release is `v0.5.1`.
+
+`crypto.TOKEN_PATTERN` has accepted 48 or 64 hex characters for a while. The
+interactive wizard in `cmd/init.go` did not use it: it compiled its own regexp
+with the pattern written out again, and that copy accepted 48 only. A token the
+rest of the tool considers valid was rejected in exactly one place — the one a
+user actually types into.
+
+That copy is gone; the wizard calls `crypto.ValidateTokenFormat()`, a new
+exported function that answers the same question without the portal call.
+
+`cmd/init_test.go` had the same problem in the other direction: it compiled a
+*correct* copy of the pattern and asserted against that, so it proved nothing
+about `init` and would have gone on passing through the bug above. It now
+asserts the function the wizard calls. `crypto/security_test.go` gets the same
+treatment, against the package constant instead of a literal.
+
+All packages pass.

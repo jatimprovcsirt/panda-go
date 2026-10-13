@@ -132,6 +132,20 @@ func ValidateToken(token string) error {
 	return nil
 }
 
+// ValidateTokenFormat reports whether the token is well-formed.
+//
+// Distinct from ValidateToken: that one consults the portal and returns an
+// error. This one answers a question about the string — the CLI wizard needs
+// that answer to decide whether to warn about what the user typed.
+//
+// It exists because the wizard compiled its own regexp with the pattern
+// written out again, and that copy accepted 48 hex characters where this
+// package accepts 48 or 64. A token the rest of the tool considers valid was
+// rejected in exactly one place.
+func ValidateTokenFormat(token string) bool {
+	return tokenRegexp.MatchString(token)
+}
+
 // IsDemoToken checks if the given token is the static demo token.
 func IsDemoToken(token string) bool {
 	return token == DEMO_TOKEN

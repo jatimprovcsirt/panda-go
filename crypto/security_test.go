@@ -121,9 +121,10 @@ func TestTokenValidationRespectsSkipFlag(t *testing.T) {
 
 // TestTokenPatternGroups tests token pattern groups
 func TestTokenPatternGroups(t *testing.T) {
-	// Pattern should have groups for (demo|live) and hex characters
-	pattern := `^panda_(demo|live)_([a-f0-9]{48}|[a-f0-9]{64})$`
-	re := regexp.MustCompile(pattern)
+	// The pattern under test is the package's own constant. It used to be
+	// written out again here, which meant this test would keep passing after
+	// somebody changed TOKEN_PATTERN — it was asserting a copy against itself.
+	re := regexp.MustCompile(TOKEN_PATTERN)
 
 	tests := []struct {
 		token   string

@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"fmt"
 	"os"
-	"regexp"
 	"strings"
 	"time"
 
@@ -140,9 +139,12 @@ func runWizard() error {
 	}
 
 	if token != "" {
-		// Validate token format
-		tokenPattern := regexp.MustCompile(`^panda_(demo|live)_[a-f0-9]{48}$`)
-		if !tokenPattern.MatchString(token) {
+		// The pattern comes from the crypto package rather than being written
+		// out again here. It was written out again, and the two had drifted:
+		// this copy accepted 48 hex characters where crypto.TOKEN_PATTERN
+		// accepts 48 or 64, so a token the rest of the tool considers valid
+		// was rejected here.
+		if !crypto.ValidateTokenFormat(token) {
 			fmt.Println("⚠️  Warning: Token format appears invalid.")
 			fmt.Print("Continue anyway? (y/n): ")
 			input, _ := reader.ReadString('\n')

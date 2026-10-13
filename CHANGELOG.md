@@ -21,6 +21,7 @@ before tagging.
 
 | Version | Date | What it was |
 |---|---|---|
+| `v0.5.1` | 2026-10-13 | The wizard compiled its own copy of the token pattern. No code defect found in this package — it was the one the other three were measured against. |
 | `v0.5.0` | 2026-08-16 | CLI non-interactive mode documentation and linter fixes. |
 | `v0.1.6` | 2026-08-14 | README corrected PANDA CLI workflow. |
 | `v0.1.4` | 2026-08-14 | README corrected PANDA CLI workflow. |
@@ -47,9 +48,9 @@ here.
 its next dependency update, so a tag is not purely a statement about this
 repository.
 
-## Unreleased — the wizard had its own copy of the pattern
+## What v0.5.1 fixes
 
-No new tag yet. The next release is `v0.5.1`.
+### The wizard had its own copy of the pattern
 
 `crypto.TOKEN_PATTERN` has accepted 48 or 64 hex characters for a while. The
 interactive wizard in `cmd/init.go` did not use it: it compiled its own regexp

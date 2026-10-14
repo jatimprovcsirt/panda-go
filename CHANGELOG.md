@@ -49,6 +49,7 @@ copy of it.
 
 | Version | Date | What it was |
 |---|---|---|
+| `v0.5.2` | 2026-10-14 | `init --quick` accepts `--kid`; it always produced `default-key` before. |
 | `v0.5.1` | 2026-10-13 | The wizard compiled its own copy of the token pattern. No code defect found in this package — it was the one the other three were measured against. |
 | `v0.5.0` | 2026-08-16 | CLI non-interactive mode documentation and linter fixes. |
 | `v0.1.6` | 2026-08-14 | README corrected PANDA CLI workflow. |
@@ -57,6 +58,26 @@ copy of it.
 | `v0.1.2` | 2026-08-10 | PANDA portal URL added to documentation. |
 | `v0.1.1` | 2026-07-18 | 48/64 hex token support. |
 | `v0.1.0` | 2026-07-12 | First tag. |
+
+## What v0.5.2 fixes
+
+`init --quick` took no key identifier, so it always generated `default-key`.
+panda-node and panda-php both accept `--kid` there, and that is what the CLI
+guide documents — so the one-liner for a CI pipeline or a Dockerfile worked in
+three SDKs and exited with `Error: unknown flag: --kid` in this one.
+
+The flag was never *accepted*, which is the visible half: adding it to the
+option list is not enough, because `runQuickInit` wrote the literal
+`"default-key"` into the config and passed it to generateAndStoreKey. Both now
+come from the resolved value.
+
+`defaultKid` is also written to the credentials now. The wizard set it and
+quick mode did not, so which files carried the identifier depended on which
+command had created the project.
+
+The tests run quick init and read back what it wrote. Asserting on the source
+would pass for a flag that is parsed and then dropped, which is the shape of
+the bug.
 
 ## Why there are two version lines
 

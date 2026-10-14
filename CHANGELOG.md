@@ -49,6 +49,7 @@ copy of it.
 
 | Version | Date | What it was |
 |---|---|---|
+| `v0.5.3` | 2026-10-14 | `--provider` on `init` and `generate`; Vault and Infisical were unreachable from a pipeline. |
 | `v0.5.2` | 2026-10-14 | `init --quick` accepts `--kid`; it always produced `default-key` before. |
 | `v0.5.1` | 2026-10-13 | The wizard compiled its own copy of the token pattern. No code defect found in this package — it was the one the other three were measured against. |
 | `v0.5.0` | 2026-08-16 | CLI non-interactive mode documentation and linter fixes. |
@@ -59,7 +60,54 @@ copy of it.
 | `v0.1.1` | 2026-07-18 | 48/64 hex token support. |
 | `v0.1.0` | 2026-07-12 | First tag. |
 
-## What v0.5.2 fixes
+
+## What v0.5.3 adds
+
+### `--provider` on `init` and `generate`
+
+`panda-node` had this flag and the other three did not, so `init --quick` could
+only ever configure the local provider: **Vault and Infisical were unreachable
+from a CI pipeline here.** A team provisioning into Vault from a build could do
+it in Node.js and not in the language they were actually using.
+
+It is the sixth instance of this project's recurring defect — a shared rule
+with more than one definition. Five `init` flags were uniform before it, and
+each became uniform the same way: added to all four in turn, each time after
+noticing one SDK had it and another did not. The set is now pinned in
+`panda-spec/cli-flags.md`, and `verify_interop.js` section 10 runs `--help` in
+all four SDKs and asserts every pinned name appears. Reverting this release's
+change fails exactly the two checks written for it.
+
+### Provider settings come from the environment, and are required
+
+`--provider` names the provider; it does not carry its settings, and on this
+path there is nobody to ask. The variables are the ones `CLAUDE.md` and the
+provider classes already use — `PANDA_VAULT_URL` and either
+`PANDA_VAULT_ROLE_ID` + `PANDA_VAULT_SECRET_ID` or `PANDA_VAULT_TOKEN` for
+Vault; `PANDA_INFISICAL_CLIENT_ID`, `PANDA_INFISICAL_CLIENT_SECRET` and
+`PANDA_INFISICAL_PROJECT_ID` for Infisical.
+
+`PANDA_VAULT_AUTH_METHOD` is inferred when it is not set: role and secret means
+`approle`, a token means `token`, neither is an error naming the variable.
+
+**A missing required variable exits 1 and writes nothing** — no `.panda`
+directory, no `.env`, no key. The wizard may offer a localhost default because
+a person is there to see it and disagree; `--quick` cannot ask, and a
+credentials file naming a Vault that nothing said to use behaves like a working
+configuration until the first decrypt. The refusal names every variable that is
+missing, not the first.
+
+### No local key is written for a non-local provider
+
+A key generated "for" a secret manager is a second key that nothing reads, and
+it would be the one in `.env` that a later `panda generate` does not know
+about. `--skip-key-gen` therefore has nothing to suppress on this path.
+
+### Submodule pin moves to `panda-spec` v4
+
+The tag that carries `cli-flags.md` and the tenth interop section.
+
+## What v0.5.2 adds
 
 `init --quick` took no key identifier, so it always generated `default-key`.
 panda-node and panda-php both accept `--kid` there, and that is what the CLI

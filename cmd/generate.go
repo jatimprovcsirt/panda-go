@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/jatimprovcsirt/panda-go/internal/panda"
@@ -16,8 +17,9 @@ import (
 )
 
 var (
-	generateKid string
+	generateKid         string
 	generateDescription string
+	generateProvider    string
 )
 
 // generateCmd represents the generate command
@@ -34,6 +36,12 @@ func init() {
 	rootCmd.AddCommand(generateCmd)
 	generateCmd.Flags().StringVar(&generateKid, "kid", "", "Key Identifier")
 	generateCmd.Flags().StringVar(&generateDescription, "description", "", "Key description")
+	generateCmd.Flags().StringVar(
+		&generateProvider,
+		"provider",
+		"",
+		"Provider to store the key in. Defaults to the one 'init' recorded.",
+	)
 }
 
 func runGenerate(cmd *cobra.Command, args []string) error {
@@ -63,6 +71,20 @@ func runGenerate(cmd *cobra.Command, args []string) error {
 
 	if creds == nil {
 		return fmt.Errorf("no PANDA configuration found. Run 'panda init' first")
+	}
+
+	// The override, applied before the key is stored rather than inside the
+	// store function. panda-node called this `--keystore`; one concept under
+	// two names is two definitions of it, and cli-flags.md pins --provider.
+	if strings.TrimSpace(generateProvider) != "" {
+		override := strings.ToLower(strings.TrimSpace(generateProvider))
+		if !slices.Contains(providerNames, override) {
+			return fmt.Errorf(
+				"unknown provider: %s (expected one of %s)",
+				override, strings.Join(providerNames, ", "),
+			)
+		}
+		creds.Provider = override
 	}
 
 	// Generate and store key

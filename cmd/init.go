@@ -4,20 +4,42 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
-	"github.com/jatimprovcsirt/panda-go/internal/panda"
 	"github.com/jatimprovcsirt/panda-go/crypto"
+	"github.com/jatimprovcsirt/panda-go/internal/panda"
 	"github.com/spf13/cobra"
 )
 
 var (
-	initToken   string
-	initKid     string
-	initQuick   bool
-	initReinit  bool
-	initSkipKey bool
+	initToken    string
+	initKid      string
+	initQuick    bool
+	initReinit   bool
+	initSkipKey  bool
+	initProvider string
+)
+
+// providerNames are the values --provider accepts.
+//
+// Exported to the tests through the package rather than written out again
+// there. A test that restates a rule asserts its own copy of it — which is how
+// the token pattern's second copy here survived a release, in this package.
+var providerNames = []string{"local", "vault", "infisical"}
+
+// The environment variables each provider is configured from on the
+// non-interactive path. These are the names VaultKeyProvider,
+// InfisicalKeyProvider and CLAUDE.md's environment reference already use.
+var (
+	vaultRequiredEnv     = []string{"PANDA_VAULT_URL"}
+	vaultApproleEnv      = []string{"PANDA_VAULT_ROLE_ID", "PANDA_VAULT_SECRET_ID"}
+	infisicalRequiredEnv = []string{
+		"PANDA_INFISICAL_CLIENT_ID",
+		"PANDA_INFISICAL_CLIENT_SECRET",
+		"PANDA_INFISICAL_PROJECT_ID",
+	}
 )
 
 // initCmd represents the init command
@@ -44,9 +66,15 @@ func init() {
 	// whoever picked this one. Later keys are `panda generate <kid>` in every
 	// SDK; this is the first key.
 	initCmd.Flags().StringVar(&initKid, "kid", "default-key", "Key Identifier (quick mode)")
-	initCmd.Flags().BoolVar(&initQuick, "quick", false, "Skip wizard, use quick setup with local provider")
+	initCmd.Flags().BoolVar(&initQuick, "quick", false, "Skip the wizard; non-interactive setup")
 	initCmd.Flags().BoolVar(&initReinit, "reinit", false, "Reinitialize even if already initialized")
 	initCmd.Flags().BoolVar(&initSkipKey, "skip-key-gen", false, "Skip first key generation")
+	initCmd.Flags().StringVar(
+		&initProvider,
+		"provider",
+		"",
+		"Key provider: local, vault, or infisical. Implies non-interactive, as --quick does.",
+	)
 }
 
 func runInit(cmd *cobra.Command, args []string) error {
@@ -57,14 +85,19 @@ func runInit(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	if initQuick {
-		return runQuickInit()
+	// Naming a provider implies the non-interactive path for the same reason
+	// --quick does: it is an instruction the wizard cannot accept, since it
+	// would ask the question anyway and discard the answer. panda-node has
+	// read it this way since it gained the flag, so reading it otherwise here
+	// would introduce a disagreement in the course of removing one.
+	if initQuick || strings.TrimSpace(initProvider) != "" {
+		return runQuickInit(initProvider)
 	}
 
 	return runWizard()
 }
 
-func runQuickInit() error {
+func runQuickInit(provider string) error {
 	fmt.Println("🐼 PANDA Quick Init")
 	fmt.Println("====================")
 
@@ -94,16 +127,34 @@ func runQuickInit() error {
 		kid = "default-key"
 	}
 
+	provider = strings.ToLower(strings.TrimSpace(provider))
+	if provider == "" {
+		provider = "local"
+	}
+	if !slices.Contains(providerNames, provider) {
+		return fmt.Errorf(
+			"unknown provider: %s (expected one of %s)",
+			provider, strings.Join(providerNames, ", "),
+		)
+	}
+
+	creds := &panda.PandaCredentials{
+		Token:      token,
+		Provider:   provider,
+		DefaultKid: kid,
+	}
+
+	// Provider configuration is resolved before anything is written, so a
+	// short environment stops init with nothing left behind.
+	if provider != "local" {
+		if err := applyProviderEnv(creds, provider); err != nil {
+			return err
+		}
+	}
+
 	// Create .panda directory
 	if err := panda.CreatePandaDirectory(); err != nil {
 		return fmt.Errorf("failed to create .panda directory: %w", err)
-	}
-
-	// Store credentials
-	creds := &panda.PandaCredentials{
-		Token:      token,
-		Provider:   "local",
-		DefaultKid: kid,
 	}
 
 	if err := panda.WriteCredentials(creds); err != nil {
@@ -114,7 +165,7 @@ func runQuickInit() error {
 	config := &panda.PandaConfig{
 		Version:     "1.0.0",
 		Initialized: getCurrentTimestamp(),
-		Provider:    panda.ProviderConfig{Type: "local"},
+		Provider:    panda.ProviderConfig{Type: provider},
 		DefaultKid:  kid,
 	}
 
@@ -122,8 +173,10 @@ func runQuickInit() error {
 		return fmt.Errorf("failed to write config: %w", err)
 	}
 
-	// Generate default key
-	if !initSkipKey {
+	// Generate default key. Only for the local provider: a key generated
+	// "for" Vault or Infisical is a second key that nothing reads, and
+	// panda-node generates none on this path either.
+	if !initSkipKey && provider == "local" {
 		if err := generateAndStoreKey(kid, creds, "Default PANDA key"); err != nil {
 			return err
 		}
@@ -133,6 +186,120 @@ func runQuickInit() error {
 	fmt.Println("Run 'panda status' to verify configuration.")
 
 	return nil
+}
+
+// applyProviderEnv fills a non-local provider's settings from the
+// environment, or returns an error naming what is missing.
+//
+// Fail-closed, as the token gate on this path is. The wizard may offer
+// http://127.0.0.1:8200 as a default because a person is there to see it and
+// disagree; --quick cannot ask, and a credentials file naming a Vault that
+// nothing said to use behaves like a working configuration until the first
+// decrypt.
+func applyProviderEnv(creds *panda.PandaCredentials, provider string) error {
+	if provider == "vault" {
+		if err := requireEnv(vaultRequiredEnv, provider); err != nil {
+			return err
+		}
+
+		method := os.Getenv("PANDA_VAULT_AUTH_METHOD")
+		if method == "" {
+			// Inferred where it is unambiguous. Demanding the variable when
+			// the caller has already answered the question by setting the role
+			// and secret, or a token, is the difference between a quick init
+			// that works and one that argues.
+			if envAllSet(vaultApproleEnv) {
+				method = "approle"
+			} else if os.Getenv("PANDA_VAULT_TOKEN") != "" {
+				method = "token"
+			} else if err := requireEnv([]string{"PANDA_VAULT_AUTH_METHOD"}, provider); err != nil {
+				return err
+			}
+		}
+
+		if method != "approle" && method != "token" {
+			return fmt.Errorf("PANDA_VAULT_AUTH_METHOD must be 'approle' or 'token', not %q", method)
+		}
+
+		creds.VaultURL = os.Getenv("PANDA_VAULT_URL")
+		creds.VaultAuthMethod = method
+		creds.VaultMount = envOr("PANDA_VAULT_MOUNT_PATH", "secret")
+
+		if method == "approle" {
+			if err := requireEnv(vaultApproleEnv, provider); err != nil {
+				return err
+			}
+			creds.VaultRoleId = os.Getenv("PANDA_VAULT_ROLE_ID")
+			creds.VaultSecretId = os.Getenv("PANDA_VAULT_SECRET_ID")
+			creds.VaultTokenTTL = envOr("PANDA_VAULT_TOKEN_TTL", "3600")
+		} else {
+			if err := requireEnv([]string{"PANDA_VAULT_TOKEN"}, provider); err != nil {
+				return err
+			}
+			creds.VaultToken = os.Getenv("PANDA_VAULT_TOKEN")
+		}
+
+		return nil
+	}
+
+	// infisical
+	if err := requireEnv(infisicalRequiredEnv, provider); err != nil {
+		return err
+	}
+
+	// The site URL and the cache TTL do have safe defaults — one is the public
+	// service, the other a duration — so unlike the credentials above they are
+	// defaulted rather than demanded.
+	creds.InfisicalSiteUrl = envOr("PANDA_INFISICAL_SITE_URL", "https://app.infisical.com")
+	creds.InfisicalClientId = os.Getenv("PANDA_INFISICAL_CLIENT_ID")
+	creds.InfisicalClientSecret = os.Getenv("PANDA_INFISICAL_CLIENT_SECRET")
+	creds.InfisicalProjectId = os.Getenv("PANDA_INFISICAL_PROJECT_ID")
+	creds.InfisicalEnvironment = envOr("PANDA_INFISICAL_ENVIRONMENT", "dev")
+	creds.InfisicalCacheTTL = envOr("PANDA_INFISICAL_CACHE_TTL", "300")
+
+	return nil
+}
+
+func envOr(name, fallback string) string {
+	if value := os.Getenv(name); value != "" {
+		return value
+	}
+	return fallback
+}
+
+func envAllSet(names []string) bool {
+	for _, name := range names {
+		if os.Getenv(name) == "" {
+			return false
+		}
+	}
+	return true
+}
+
+// requireEnv names every variable that is missing, not only the first. A
+// refusal that says "Vault is not configured" sends the reader to the
+// documentation; one that lists the variables sends them to their shell.
+func requireEnv(names []string, provider string) error {
+	absent := make([]string, 0, len(names))
+	for _, name := range names {
+		if os.Getenv(name) == "" {
+			absent = append(absent, name)
+		}
+	}
+	if len(absent) == 0 {
+		return nil
+	}
+
+	verb := "It is"
+	if len(absent) > 1 {
+		verb = "These are"
+	}
+
+	return fmt.Errorf(
+		"--provider %s needs %s to be set. %s read from the environment: "+
+			"this path cannot ask, and defaulting would write a configuration nobody chose",
+		provider, strings.Join(absent, " and "), verb,
+	)
 }
 
 func runWizard() error {
@@ -350,15 +517,15 @@ func setupVault(reader *bufio.Reader, token string) *panda.PandaCredentials {
 	}
 
 	return &panda.PandaCredentials{
-		Token:          token,
-		Provider:       "vault",
-		VaultURL:       vaultURL,
+		Token:           token,
+		Provider:        "vault",
+		VaultURL:        vaultURL,
 		VaultAuthMethod: vaultAuthMethod,
-		VaultToken:     vaultToken,
-		VaultRoleId:    vaultRoleId,
-		VaultSecretId:  vaultSecretId,
-		VaultTokenTTL:  vaultTokenTTL,
-		VaultMount:     vaultMount,
+		VaultToken:      vaultToken,
+		VaultRoleId:     vaultRoleId,
+		VaultSecretId:   vaultSecretId,
+		VaultTokenTTL:   vaultTokenTTL,
+		VaultMount:      vaultMount,
 	}
 }
 
@@ -399,14 +566,14 @@ func setupInfisical(reader *bufio.Reader, token string) *panda.PandaCredentials 
 	}
 
 	return &panda.PandaCredentials{
-		Token:                  token,
-		Provider:               "infisical",
-		InfisicalSiteUrl:       siteURL,
-		InfisicalClientId:      clientId,
-		InfisicalClientSecret:  clientSecret,
-		InfisicalProjectId:     projectId,
-		InfisicalEnvironment:   environment,
-		InfisicalCacheTTL:      cacheTTL,
+		Token:                 token,
+		Provider:              "infisical",
+		InfisicalSiteUrl:      siteURL,
+		InfisicalClientId:     clientId,
+		InfisicalClientSecret: clientSecret,
+		InfisicalProjectId:    projectId,
+		InfisicalEnvironment:  environment,
+		InfisicalCacheTTL:     cacheTTL,
 	}
 }
 

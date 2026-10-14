@@ -572,8 +572,8 @@ func TestQuickInitHonoursTheKidFlag(t *testing.T) {
 		initSkipKey = false
 	}()
 
-	if err := runQuickInit(); err != nil {
-		t.Fatalf("runQuickInit() error = %v", err)
+	if err := runQuickInit(""); err != nil {
+		t.Fatalf("runQuickInit error = %v", err)
 	}
 
 	config, err := panda.ReadConfig()
@@ -616,8 +616,8 @@ func TestQuickInitDefaultsWhenNoKidGiven(t *testing.T) {
 	initSkipKey = false
 	defer func() { initToken = ""; initKid = "default-key" }()
 
-	if err := runQuickInit(); err != nil {
-		t.Fatalf("runQuickInit() error = %v", err)
+	if err := runQuickInit(""); err != nil {
+		t.Fatalf("runQuickInit error = %v", err)
 	}
 
 	config, err := panda.ReadConfig()

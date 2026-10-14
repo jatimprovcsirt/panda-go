@@ -557,8 +557,10 @@ func TestInitKidFlagExists(t *testing.T) {
 func TestQuickInitHonoursTheKidFlag(t *testing.T) {
 	panda.RemovePandaDirectory()
 	os.Remove(".env")
+	os.Remove(".env.example")
 	defer panda.RemovePandaDirectory()
 	defer os.Remove(".env")
+	defer os.Remove(".env.example")
 
 	// The demo token skips the portal call, so this stays offline.
 	initToken = crypto.DEMO_TOKEN
@@ -604,8 +606,10 @@ func TestQuickInitHonoursTheKidFlag(t *testing.T) {
 func TestQuickInitDefaultsWhenNoKidGiven(t *testing.T) {
 	panda.RemovePandaDirectory()
 	os.Remove(".env")
+	os.Remove(".env.example")
 	defer panda.RemovePandaDirectory()
 	defer os.Remove(".env")
+	defer os.Remove(".env.example")
 
 	initToken = crypto.DEMO_TOKEN
 	initKid = ""

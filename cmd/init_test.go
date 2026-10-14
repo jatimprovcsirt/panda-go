@@ -3,6 +3,7 @@ package cmd
 import (
 	"os"
 	"regexp"
+	"strings"
 	"testing"
 	"time"
 
@@ -58,8 +59,8 @@ func TestTokenPatternValidation(t *testing.T) {
 
 	invalidTokens := []string{
 		"invalid_token",
-		"panda_demo_" + repeatChar('c', 47), // Too short
-		"panda_live_" + repeatChar('d', 65), // Too long
+		"panda_demo_" + repeatChar('c', 47),  // Too short
+		"panda_live_" + repeatChar('d', 65),  // Too long
 		"panda_other_" + repeatChar('e', 48), // Wrong prefix
 		"",
 	}
@@ -89,7 +90,7 @@ func TestDemoTokenValidation(t *testing.T) {
 		t.Error("Demo token should be recognized as demo token")
 	}
 
-	if crypto.IsDemoToken("panda_live_"+repeatChar('a', 48)) {
+	if crypto.IsDemoToken("panda_live_" + repeatChar('a', 48)) {
 		t.Error("Live token should not be recognized as demo token")
 	}
 
@@ -131,8 +132,8 @@ func TestTokenValidation(t *testing.T) {
 // TestLocalEnvironmentDetection tests local environment detection
 func TestLocalEnvironmentDetection(t *testing.T) {
 	testCases := []struct {
-		name     string
-		envValue string
+		name      string
+		envValue  string
 		wantLocal bool
 	}{
 		{name: "production env", envValue: "production", wantLocal: false},
@@ -289,14 +290,14 @@ func TestVaultCredentialsStructure(t *testing.T) {
 // TestInfisicalCredentialsStructure tests Infisical credentials structure
 func TestInfisicalCredentialsStructure(t *testing.T) {
 	creds := &panda.PandaCredentials{
-		Token:                  "test-token",
-		Provider:               "infisical",
-		InfisicalSiteUrl:       "https://app.infisical.com",
-		InfisicalClientId:      "client-id",
-		InfisicalClientSecret:  "client-secret",
-		InfisicalProjectId:     "project-id",
-		InfisicalEnvironment:   "dev",
-		InfisicalCacheTTL:      "300",
+		Token:                 "test-token",
+		Provider:              "infisical",
+		InfisicalSiteUrl:      "https://app.infisical.com",
+		InfisicalClientId:     "client-id",
+		InfisicalClientSecret: "client-secret",
+		InfisicalProjectId:    "project-id",
+		InfisicalEnvironment:  "dev",
+		InfisicalCacheTTL:     "300",
 	}
 
 	if creds.Provider != "infisical" {
@@ -532,4 +533,94 @@ func repeatChar(c byte, count int) string {
 		result[i] = c
 	}
 	return string(result)
+}
+
+// TestInitKidFlagExists tests that --kid is accepted on init.
+//
+// It was not. Quick mode hardcoded "default-key", so `panda init --quick
+// --token ... --kid my-key` — which works in panda-node and panda-php, and is
+// what the CLI guide documents — exited with "unknown flag: --kid" here.
+func TestInitKidFlagExists(t *testing.T) {
+	flag := initCmd.Flags().Lookup("kid")
+	if flag == nil {
+		t.Fatal("kid flag should exist on init")
+	}
+	if flag.DefValue != "default-key" {
+		t.Errorf("kid default = %q, want %q", flag.DefValue, "default-key")
+	}
+}
+
+// TestQuickInitHonoursTheKidFlag runs quick init and reads back what it wrote.
+//
+// Asserting on the source text would pass for a flag that is parsed and then
+// dropped, which is the shape of the bug being fixed. This runs the command.
+func TestQuickInitHonoursTheKidFlag(t *testing.T) {
+	panda.RemovePandaDirectory()
+	os.Remove(".env")
+	defer panda.RemovePandaDirectory()
+	defer os.Remove(".env")
+
+	// The demo token skips the portal call, so this stays offline.
+	initToken = crypto.DEMO_TOKEN
+	initKid = "my-app-key-1"
+	initSkipKey = false
+	defer func() {
+		initToken = ""
+		initKid = "default-key"
+		initSkipKey = false
+	}()
+
+	if err := runQuickInit(); err != nil {
+		t.Fatalf("runQuickInit() error = %v", err)
+	}
+
+	config, err := panda.ReadConfig()
+	if err != nil {
+		t.Fatalf("ReadConfig() error = %v", err)
+	}
+	if config.DefaultKid != "my-app-key-1" {
+		t.Errorf("config.DefaultKid = %q, want %q", config.DefaultKid, "my-app-key-1")
+	}
+
+	creds, err := panda.ReadCredentials()
+	if err != nil {
+		t.Fatalf("ReadCredentials() error = %v", err)
+	}
+	if creds.DefaultKid != "my-app-key-1" {
+		t.Errorf("credentials.DefaultKid = %q, want %q", creds.DefaultKid, "my-app-key-1")
+	}
+
+	env, err := os.ReadFile(".env")
+	if err != nil {
+		t.Fatalf("read .env: %v", err)
+	}
+	if !strings.Contains(string(env), "PANDA_KEY_MY_APP_KEY_1") {
+		t.Errorf(".env does not contain PANDA_KEY_MY_APP_KEY_1: %s", env)
+	}
+}
+
+// TestQuickInitDefaultsWhenNoKidGiven pins the fallback, so the flag did not
+// change the behaviour of a command that omits it.
+func TestQuickInitDefaultsWhenNoKidGiven(t *testing.T) {
+	panda.RemovePandaDirectory()
+	os.Remove(".env")
+	defer panda.RemovePandaDirectory()
+	defer os.Remove(".env")
+
+	initToken = crypto.DEMO_TOKEN
+	initKid = ""
+	initSkipKey = false
+	defer func() { initToken = ""; initKid = "default-key" }()
+
+	if err := runQuickInit(); err != nil {
+		t.Fatalf("runQuickInit() error = %v", err)
+	}
+
+	config, err := panda.ReadConfig()
+	if err != nil {
+		t.Fatalf("ReadConfig() error = %v", err)
+	}
+	if config.DefaultKid != "default-key" {
+		t.Errorf("config.DefaultKid = %q, want %q", config.DefaultKid, "default-key")
+	}
 }

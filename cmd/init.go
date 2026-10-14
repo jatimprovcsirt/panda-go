@@ -14,6 +14,7 @@ import (
 
 var (
 	initToken   string
+	initKid     string
 	initQuick   bool
 	initReinit  bool
 	initSkipKey bool
@@ -36,6 +37,13 @@ Use --quick flag for non-interactive local setup.`,
 func init() {
 	rootCmd.AddCommand(initCmd)
 	initCmd.Flags().StringVar(&initToken, "token", "", "Per-application access token")
+	// Quick mode took no key identifier at all, so it always produced
+	// `default-key` — the one flag panda-node and panda-php both accept on
+	// `init --quick` was missing here, and a command that works in two SDKs
+	// and errors in a third is a documented workflow that is wrong for
+	// whoever picked this one. Later keys are `panda generate <kid>` in every
+	// SDK; this is the first key.
+	initCmd.Flags().StringVar(&initKid, "kid", "default-key", "Key Identifier (quick mode)")
 	initCmd.Flags().BoolVar(&initQuick, "quick", false, "Skip wizard, use quick setup with local provider")
 	initCmd.Flags().BoolVar(&initReinit, "reinit", false, "Reinitialize even if already initialized")
 	initCmd.Flags().BoolVar(&initSkipKey, "skip-key-gen", false, "Skip first key generation")
@@ -77,6 +85,15 @@ func runQuickInit() error {
 
 	fmt.Println("✓ Token validated")
 
+	// Same handling as the wizard: empty falls back to default-key, and the
+	// value is carried through unchanged to the config and the credentials.
+	// generateAndStoreKey normalizes it separately for the environment
+	// variable name.
+	kid := strings.TrimSpace(initKid)
+	if kid == "" {
+		kid = "default-key"
+	}
+
 	// Create .panda directory
 	if err := panda.CreatePandaDirectory(); err != nil {
 		return fmt.Errorf("failed to create .panda directory: %w", err)
@@ -84,8 +101,9 @@ func runQuickInit() error {
 
 	// Store credentials
 	creds := &panda.PandaCredentials{
-		Token:    token,
-		Provider: "local",
+		Token:      token,
+		Provider:   "local",
+		DefaultKid: kid,
 	}
 
 	if err := panda.WriteCredentials(creds); err != nil {
@@ -97,7 +115,7 @@ func runQuickInit() error {
 		Version:     "1.0.0",
 		Initialized: getCurrentTimestamp(),
 		Provider:    panda.ProviderConfig{Type: "local"},
-		DefaultKid:  "default-key",
+		DefaultKid:  kid,
 	}
 
 	if err := panda.WriteConfig(config); err != nil {
@@ -106,7 +124,7 @@ func runQuickInit() error {
 
 	// Generate default key
 	if !initSkipKey {
-		if err := generateAndStoreKey("default-key", creds, "Default PANDA key"); err != nil {
+		if err := generateAndStoreKey(kid, creds, "Default PANDA key"); err != nil {
 			return err
 		}
 	}

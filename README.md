@@ -50,7 +50,7 @@ Setelah menjalankan perintah ini, wizard akan:
 1. Memvalidasi token Anda
 2. Meminta Anda memasukkan Key Identifier (KID) untuk kunci pertama
 3. Menghasilkan kunci 256-bit yang aman secara kriptografis secara **lokal**
-4. Menambahkan kunci dalam format base64 ke file `.env` Anda (misal: `PANDA_KEY_OPD_DUKCAPIL_KEY_1=...`)
+4. Menambahkan kunci dalam format base64 ke file `.env` Anda (misal: `PANDA_KEY_NIK_KEY_1=...`)
 
 > [!NOTE]
 > Untuk pengembangan lokal, Anda dapat menggunakan demo token bawaan:
@@ -61,7 +61,7 @@ Setelah menjalankan perintah ini, wizard akan:
 Perintah `init` melakukan hal berikut:
 1. Memvalidasi format token Anda.
 2. Menghasilkan kunci 256-bit yang aman secara kriptografis secara **lokal** (token tidak pernah menerima kunci ini).
-3. Secara otomatis menambahkan kunci dalam format base64 ke file `.env` Anda (misal: `PANDA_KEY_OPD_DUKCAPIL_KEY_1=...`).
+3. Secara otomatis menambahkan kunci dalam format base64 ke file `.env` Anda (misal: `PANDA_KEY_NIK_KEY_1=...`).
 
 ### Langkah 3: Muat Environment Variables
 
@@ -85,13 +85,13 @@ Atau, ekspor variabel environment secara manual setelah `init`:
 
 ```bash
 # Linux/macOS
-export PANDA_KEY_OPD_DUKCAPIL_KEY_1="<nilai dari .env>"
+export PANDA_KEY_NIK_KEY_1="<nilai dari .env>"
 
 # Windows (CMD)
-set PANDA_KEY_OPD_DUKCAPIL_KEY_1=<nilai dari .env>
+set PANDA_KEY_NIK_KEY_1=<nilai dari .env>
 
 # Windows (PowerShell)
-$env:PANDA_KEY_OPD_DUKCAPIL_KEY_1="<nilai dari .env>"
+$env:PANDA_KEY_NIK_KEY_1="<nilai dari .env>"
 ```
 
 ### Langkah 4: Restart Aplikasi (Penting!)
@@ -105,10 +105,10 @@ Jika aplikasi Anda membutuhkan lebih dari satu kunci (misalnya untuk field data 
 
 ```bash
 # Kunci kedua: untuk field nomor HP
-panda generate opd-dukcapil-key-2
+panda generate nik-key-2
 
 # Kunci untuk blind index (suffix -idx wajib dipisah)
-panda generate opd-dukcapil-key-1-idx
+panda generate nik-key-1-idx
 ```
 
 > [!NOTE]
@@ -120,14 +120,14 @@ Untuk merotasi kunci pada KID yang sudah ada, gunakan `rotate-key`. Perintah ini
 
 ```bash
 # Rotasi: buat kunci baru dan set sebagai default KID aktif
-panda rotate-key --new-kid opd-dukcapil-key-2
+panda rotate-key --new-kid nik-key-2
 ```
 
 ### Menghapus Kunci (Crypto-Shred)
 
 ```bash
 # Hapus kunci secara permanen (HATI-HATI: data yang dienkripsi dengan kunci ini tidak bisa didekripsi lagi!)
-panda shred opd-dukcapil-key-old
+panda shred nik-key-old
 ```
 
 ---
@@ -230,7 +230,7 @@ func main() {
 
 ```go
     rawNik := "3201012501990001"
-    kid := "opd-dukcapil-key-1"
+    kid := "nik-key-1"
 
     env, err := cipher.Encrypt([]byte(rawNik), kid)
     if err != nil {
@@ -269,7 +269,7 @@ Untuk mencari data terenkripsi, simpan hash deterministik (blind index) di kolom
 import "github.com/jatimprovcsirt/panda-go/blindindex"
 
 // KID blind index HARUS menggunakan suffix -idx
-blindIndexKid := "opd-dukcapil-key-1-idx"
+blindIndexKid := "nik-key-1-idx"
 blindIndexKey := keyProvider.GetKey(blindIndexKid)
 
 // Saat INSERT/UPDATE: hitung blind index
@@ -317,14 +317,14 @@ Lihat Bagian 1 di atas.
 
 ```bash
 # Konversi semua plaintext ke encrypted envelope (resumable jika terputus)
-panda migrate citizens nik opd-dukcapil-key-1
+panda migrate citizens nik nik-key-1
 
 # Opsi tambahan:
 # --batch-size <n>  : jumlah baris per chunk (default: 100)
 # --delay <ms>      : jeda antar chunk (default: 100ms)
 # --pk <col>        : nama kolom primary key (default: id)
 # --dry-run         : estimasi scope tanpa mengubah data
-panda migrate citizens nik opd-dukcapil-key-1 --batch-size 500 --dry-run
+panda migrate citizens nik nik-key-1 --batch-size 500 --dry-run
 ```
 
 Perintah ini menyimpan checkpoint di tabel `panda_migration_state`, jadi aman jika terputus dan bisa dilanjutkan.
@@ -345,7 +345,7 @@ import (
 func main() {
     keyProvider := crypto.NewLocalKeyProvider()
     cipher := crypto.NewFieldCipher(keyProvider, nil, nil)
-    blindIndexKey := keyProvider.GetKey("opd-dukcapil-key-1-idx")
+    blindIndexKey := keyProvider.GetKey("nik-key-1-idx")
 
     db, _ := sql.Open("mysql", "user:pass@/dbname")
     defer db.Close()
@@ -519,5 +519,5 @@ attribution.
 
 Previously MIT. Apache-2.0 is equally permissive and adds an express patent
 grant and a trademark clause, which MIT is silent on — it matters here because
-this is cryptographic software that other agencies and vendors are expected to
+this is cryptographic software that other organizations and vendors are expected to
 embed in their own systems.

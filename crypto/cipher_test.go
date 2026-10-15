@@ -67,7 +67,7 @@ func TestFieldCipher_PositiveVectors(t *testing.T) {
 			keyProvider := NewLocalKeyProvider()
 			keyProvider.SetKey(v.Kid, key)
 
-			cipher := NewFieldCipher(keyProvider, nil, nil)
+			cipher := NewFieldCipher(keyProvider, nil)
 
 			env := Envelope{
 				V:          v.Envelope.V,
@@ -141,7 +141,7 @@ func TestFieldCipher_NegativeVectors(t *testing.T) {
 			keyProvider := NewLocalKeyProvider()
 			keyProvider.SetKey(v.Kid, key)
 
-			cipher := NewFieldCipher(keyProvider, nil, nil)
+			cipher := NewFieldCipher(keyProvider, nil)
 
 			env := Envelope{
 				V:          v.Envelope.V,

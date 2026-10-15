@@ -2,10 +2,8 @@ package cmd
 
 import (
 	"bufio"
-	"crypto/rand"
 	"encoding/base64"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -13,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/jatimprovcsirt/panda-go/internal/panda"
+	"github.com/jatimprovcsirt/panda-go/telemetry"
 	"github.com/spf13/cobra"
 )
 
@@ -151,10 +150,10 @@ func generateAndStoreKey(kid string, creds *panda.PandaCredentials, description 
 		fmt.Printf("Description: %s\n", description)
 	}
 
-	// Generate 32-byte random key
-	keyBytes := make([]byte, 32)
-	if _, err := io.ReadFull(rand.Reader, keyBytes); err != nil {
-		return fmt.Errorf("failed to generate random key: %w", err)
+	// Generate 32-byte random key, and report that one exists.
+	keyBytes, err := telemetry.NewEncryptionKey()
+	if err != nil {
+		return err
 	}
 
 	keyBase64 := base64.StdEncoding.EncodeToString(keyBytes)

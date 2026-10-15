@@ -7,7 +7,6 @@ import (
 	"encoding/base64"
 	"fmt"
 	"io"
-	"os"
 
 	"github.com/jatimprovcsirt/panda-go/audit"
 	"github.com/jatimprovcsirt/panda-go/masking"
@@ -15,31 +14,28 @@ import (
 )
 
 type FieldCipher struct {
-	keys           KeyProvider
-	audit          *audit.AuditLogger
-	telemetry      *telemetry.TelemetryClient
-	telemetryToken string
+	keys  KeyProvider
+	audit *audit.AuditLogger
 }
 
+// NewFieldCipher creates a cipher.
+//
+// The third parameter — a telemetry client — is gone. It existed so every
+// cipher carried a token and an HTTP client, and the cipher used them to make
+// a network request inside encrypt() and decryptRaw(). Counting is now a
+// package-level operation-counter increment (see telemetry.Count), and the
+// reporting happens on a timer, nowhere near an operation.
 func NewFieldCipher(
 	keys KeyProvider,
 	auditLogger *audit.AuditLogger,
-	telemetryClient *telemetry.TelemetryClient,
 ) *FieldCipher {
 	if auditLogger == nil {
 		auditLogger = audit.NewAuditLogger(nil)
 	}
-	if telemetryClient == nil {
-		telemetryClient = telemetry.NewTelemetryClient()
-	}
-
-	token := os.Getenv("PANDA_PORTAL_TOKEN")
 
 	return &FieldCipher{
-		keys:           keys,
-		audit:          auditLogger,
-		telemetry:      telemetryClient,
-		telemetryToken: token,
+		keys:  keys,
+		audit: auditLogger,
 	}
 }
 
@@ -90,9 +86,7 @@ func (c *FieldCipher) Encrypt(plaintext []byte, kid string, extra ...string) (En
 
 	c.audit.Log(actor, field, kid, "encrypt", "success")
 
-	if c.telemetryToken != "" {
-		c.telemetry.Report(c.telemetryToken, key, "0.1.0")
-	}
+	telemetry.Count(telemetry.Encrypt)
 
 	return env, nil
 }
@@ -107,13 +101,23 @@ func (c *FieldCipher) Decrypt(env Envelope, extra ...string) ([]byte, error) {
 		field = extra[1]
 	}
 
-	raw, err := c.DecryptRaw(env, actor, field)
+	// The label goes in, rather than being logged here as well: the shared
+	// implementation logs every outcome, so logging again here wrote two
+	// audit entries per masked read — one of them claiming a raw decrypt.
+	raw, err := c.decryptRaw(env, actor, field, "decrypt_masked")
 	if err != nil {
 		return nil, err
 	}
 
 	masked := masking.Mask(string(raw))
 	c.audit.Log(actor, field, env.Kid, "decrypt_masked", "success")
+
+	// Counted here, at the public method, and the raw path below is NOT
+	// counted by this call. Decrypt used to call the exported DecryptRaw, so
+	// an implementation that counted inside DecryptRaw would have counted
+	// every masked read twice and classified it as a raw one — which is the
+	// governance signal, and it would have been silently wrong.
+	telemetry.Count(telemetry.Decrypt)
 
 	return []byte(masked), nil
 }
@@ -128,57 +132,69 @@ func (c *FieldCipher) DecryptRaw(env Envelope, extra ...string) ([]byte, error) 
 		field = extra[1]
 	}
 
+	plaintext, err := c.decryptRaw(env, actor, field, "decrypt_raw")
+	if err != nil {
+		return nil, err
+	}
+
+	c.audit.Log(actor, field, env.Kid, "decrypt_raw", "success")
+	telemetry.Count(telemetry.DecryptRaw)
+
+	return plaintext, nil
+}
+
+// decryptRaw is the shared implementation. Unexported and uncounted, so the
+// two public paths above each count exactly once.
+func (c *FieldCipher) decryptRaw(env Envelope, actor, field, label string) ([]byte, error) {
+
 	if env.V != 1 {
-		c.audit.Log(actor, field, env.Kid, "decrypt_raw", "unsupported_envelope_version")
+		c.audit.Log(actor, field, env.Kid, label, "unsupported_envelope_version")
 		return nil, ErrUnsupportedVersion
 	}
 
 	if env.Alg != "aes-256-gcm" {
-		c.audit.Log(actor, field, env.Kid, "decrypt_raw", "unsupported_algorithm")
+		c.audit.Log(actor, field, env.Kid, label, "unsupported_algorithm")
 		return nil, ErrUnsupportedAlgorithm
 	}
 
 	key, err := c.keys.GetKey(env.Kid)
 	if err != nil {
-		c.audit.Log(actor, field, env.Kid, "decrypt_raw", "key_not_found")
+		c.audit.Log(actor, field, env.Kid, label, "key_not_found")
 		return nil, err
 	}
 
 	nonce, err := base64.StdEncoding.DecodeString(env.Nonce)
 	if err != nil || len(nonce) != 12 {
-		c.audit.Log(actor, field, env.Kid, "decrypt_raw", "malformed_envelope")
+		c.audit.Log(actor, field, env.Kid, label, "malformed_envelope")
 		return nil, ErrMalformedEnvelope
 	}
 
 	ciphertextAndTag, err := base64.StdEncoding.DecodeString(env.Ciphertext)
 	if err != nil || len(ciphertextAndTag) < 16 {
-		c.audit.Log(actor, field, env.Kid, "decrypt_raw", "malformed_envelope")
+		c.audit.Log(actor, field, env.Kid, label, "malformed_envelope")
 		return nil, ErrMalformedEnvelope
 	}
 
 	block, err := aes.NewCipher(key)
 	if err != nil {
-		c.audit.Log(actor, field, env.Kid, "decrypt_raw", "auth_failure")
+		c.audit.Log(actor, field, env.Kid, label, "auth_failure")
 		return nil, fmt.Errorf("%w: %v", ErrAuthenticationFailed, err)
 	}
 
 	aesgcm, err := cipher.NewGCM(block)
 	if err != nil {
-		c.audit.Log(actor, field, env.Kid, "decrypt_raw", "auth_failure")
+		c.audit.Log(actor, field, env.Kid, label, "auth_failure")
 		return nil, fmt.Errorf("%w: %v", ErrAuthenticationFailed, err)
 	}
 
 	plaintext, err := aesgcm.Open(nil, nonce, ciphertextAndTag, nil)
 	if err != nil {
-		c.audit.Log(actor, field, env.Kid, "decrypt_raw", "auth_failure")
+		c.audit.Log(actor, field, env.Kid, label, "auth_failure")
 		return nil, ErrAuthenticationFailed
 	}
 
-	c.audit.Log(actor, field, env.Kid, "decrypt_raw", "success")
-
-	if c.telemetryToken != "" {
-		c.telemetry.Report(c.telemetryToken, key, "0.1.0")
-	}
-
+	// No success entry here. The two public methods log their own, because
+	// only they know which one ran — and the shared implementation logging
+	// one wrote a false "raw" entry for every masked read.
 	return plaintext, nil
 }

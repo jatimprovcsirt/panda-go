@@ -2,11 +2,9 @@ package cmd
 
 import (
 	"bufio"
-	"crypto/rand"
 	"database/sql"
 	"encoding/base64"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -19,22 +17,23 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/jatimprovcsirt/panda-go/crypto"
+	"github.com/jatimprovcsirt/panda-go/telemetry"
 )
 
 var (
-	force bool
-	token string
+	force     bool
+	token     string
 	batchSize int
-	delay int
-	pk string
-	dryRun bool
+	delay     int
+	pk        string
+	dryRun    bool
 )
 
 // rootCmd represents the base command
 var rootCmd = &cobra.Command{
-	Use:   "panda",
-	Short: "PANDA CLI Tool for Go",
-	Long:  `PANDA (Private And Secure Data Access) CLI tool for encryption key management and data migration.`,
+	Use:     "panda",
+	Short:   "PANDA CLI Tool for Go",
+	Long:    `PANDA (Private And Secure Data Access) CLI tool for encryption key management and data migration.`,
 	Version: "0.1.0",
 }
 
@@ -65,8 +64,9 @@ func addRotateKeyCommand() {
 			normalizedKid := strings.ToUpper(reg.ReplaceAllString(newKid, "_"))
 			envVarName := fmt.Sprintf("PANDA_KEY_%s", normalizedKid)
 
-			keyBytes := make([]byte, 32)
-			if _, err := io.ReadFull(rand.Reader, keyBytes); err != nil {
+			// Generate the key, and report that one exists.
+			keyBytes, err := telemetry.NewEncryptionKey()
+			if err != nil {
 				fmt.Printf("Error generating key: %v\n", err)
 				os.Exit(1)
 			}
@@ -297,7 +297,7 @@ func runMigration(db *sql.DB, driver, table, column, targetKid, pkColumn string,
 
 	// Run migration
 	keyProvider := crypto.NewLocalKeyProvider()
-	cipher := crypto.NewFieldCipher(keyProvider, nil, nil)
+	cipher := crypto.NewFieldCipher(keyProvider, nil)
 
 	lastID := checkpoint
 	totalProcessed := 0
